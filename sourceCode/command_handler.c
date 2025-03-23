@@ -5,27 +5,15 @@
 #include <stdbool.h>
 #include "booking.h"
 
-// 定义全局变量
+// 全局预约请求队列（bookingQueue数），最多存储MAX_BOOKINGS个预约
+// bookingQueue数组每个元素保存一个用户的停车预约信息，包含成员ID、时间、车位号等
+// bookingCount记录当前有效的预约数量，添加新预约时会自动递增这个计数器
+// 这两个变量会被不同的命令处理函数共享使用，比如添加/取消预约时都需要操作这个队列
+
+// 定义全局
 Booking bookingQueue[MAX_BOOKINGS];
 int bookingCount = 0;
 
-// 处理批量文件
-void process_batch_file(const char* filename) {
-    FILE* file = fopen(filename, "r");
-    if (!file) {
-        printf("Error opening file: %s\n", filename);
-        return;
-    }
-
-    char line[256];
-    while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\n")] = '\0';
-        if (strlen(line) > 0) {
-            handle_command(line);
-        }
-    }
-    fclose(file);
-}
 
 // 命令处理函数
 // 解析addParking命令
@@ -59,7 +47,6 @@ void parse_add_parking(char* main_cmd) {
             }
         }
     }
-    
     // 添加请求到队列
     if (bookingCount < MAX_BOOKINGS) {
         bookingQueue[bookingCount++] = newBooking;
@@ -77,14 +64,11 @@ void handle_command(const char* command) {
         if (strncmp(main_cmd, "addParking", 10) == 0) {
             parse_add_parking(main_cmd);
         }
-        else if (strncmp(main_cmd, "importBatch", 11) == 0) {
-            // 解析批量导入命令
-            char* file_name = strtok(main_cmd + 11, " ");
-            if (file_name) {
-                process_batch_file(file_name);
-            } else {
-                printf("Error: Missing batch file name\n");
-            }
+        //指令格式模板:
+        //strncmp是C语言中的字符串比较函数，用于比较两个字符串的前n个字符是否相等。
+        else if (strncmp(main_cmd, "xxx", 11) == 0) {
+            // 调用对应函数
+            printf("随便打印点东西放在这里", main_cmd);
         }
         else {
             printf("Unknown command: %s\n", main_cmd);
