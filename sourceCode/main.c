@@ -8,7 +8,8 @@ int main() {
     char input[256];
     bookingCount = 0; // 初始化全局计数器
     
-    printf("SPMS> ");
+    printf("~~ WELCOME TO PolyU ~~\n");
+    printf("Please enter booking: ");
     while (fgets(input, sizeof(input), stdin)) {
         // 去除换行符
         input[strcspn(input, "\n")] = '\0';
@@ -21,7 +22,7 @@ int main() {
             handle_command(input);
         }
         
-        printf("SPMS> ");
+        printf("Please enter booking: ");
     }
     return 0;
 }
