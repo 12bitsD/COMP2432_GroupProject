@@ -3,7 +3,7 @@
 
 // 时间槽管理（7天，每天24小时）
 static bool time_slots[7][24] = {0};
-// 设备资源（3个电池，3个电缆）
+// 设备资源（3个battery，3个cable）
 static bool battery_available[3] = {true};
 static bool cable_available[3] = {true};
 

@@ -30,4 +30,4 @@ gcc -o spms main.c command_handler.c scheduling.c
 - `addParking`   添加停车请求(完成)
 - `printStats`   查看统计报告（todo）
 - `compareAlgo`  算法性能对比(todo)
-- `loadBatch`    批量导入请求文件(todo)
+- `importBatch`    批量导入请求文件(todo)

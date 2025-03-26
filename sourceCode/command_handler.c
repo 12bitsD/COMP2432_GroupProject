@@ -15,44 +15,168 @@ Booking bookingQueue[MAX_BOOKINGS];
 int bookingCount = 0;
 
 
-// 命令处理函数
-// 解析addParking命令
-void parse_add_parking(char* main_cmd) {
+ // 添加请求到队列
+void add_queue(Booking newBooking) {
+      
+    if (bookingCount < MAX_BOOKINGS) {
+        bookingQueue[bookingCount++] = newBooking;
+        printf("Pending\n");
+    } else {
+        printf("Error: Booking queue is full\n");
+    } 
+}
+
+void parse_parking(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+    strcpy(newBooking.type, "parking");
+    newBooking.status = 0;
+    
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+            default: // facilities
+                if (param_index - 4 < MAX_ESSENTIALS) {
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;
+    }
+    // 检查是否包含必需设施：battery和cable
+    bool has_battery = false;
+    bool has_cable = false;
+    
+    // 遍历essentials数组检查必需设施
+    for (int i = 0; i < MAX_ESSENTIALS && newBooking.essentials[i][0] != '\0'; i++) {
+        if (strcmp(newBooking.essentials[i], "battery") == 0) {
+            has_battery = true;
+        } else if (strcmp(newBooking.essentials[i], "cable") == 0) {
+            has_cable = true;
+        }
+    }
+    
+    // 验证必需设施是否都存在
+    if (has_battery && has_cable) {
+        add_queue(newBooking);
+    } else {
+        printf("Error: Reservation requires both battery and cable facilities\n");
+    }
+}
+
+// 处理普通预约
+void parse_reservation(char* main_cmd) {
     char* token = strtok(main_cmd, " ");
     Booking newBooking = {0};
     
-    // 提取参数
+    // 设置预约类型和状态
+    strcpy(newBooking.type, "reservation");  // 普通预约
+    newBooking.status = 0;  // 设置为待处理状态
+    
+    int param_index = 0;
     while ((token = strtok(NULL, " ")) != NULL) {
-        if (strncmp(token, "-member_", 8) == 0) {
-            strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
-        }
-        else if (strchr(token, '-') && strlen(token) == 10) { // 日期格式判断
-            strcpy(newBooking.date, token);
-        }
-        else if (strchr(token, ':') && strlen(token) == 5) { // 时间格式判断
-            strcpy(newBooking.start_time, token);
-        }
-        else if (isdigit(token[0]) && strchr(token, '.')) { // 时长判断
-            newBooking.duration = atof(token);
-        }
-        else if (strncmp(token, "slot", 4) == 0) { // 停车位编号
-            newBooking.slot = atoi(token + 4);
-        }
-        else { // 设施列表
-            for (int i = 0; i < MAX_ESSENTIALS; i++) {
-                if (strlen(newBooking.essentials[i]) == 0) {
-                    strcpy(newBooking.essentials[i], token);
-                    break;
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+
+            default: // facilities
+                if (param_index - 4 < MAX_ESSENTIALS) {
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
                 }
-            }
+                break;
+        }
+        param_index++;
+        
+    }
+    // 检查是否包含必需设施：battery和cable
+    bool has_battery = false;
+    bool has_cable = false;
+    
+    // 遍历essentials数组检查必需设施
+    for (int i = 0; i < MAX_ESSENTIALS && newBooking.essentials[i][0] != '\0'; i++) {
+        if (strcmp(newBooking.essentials[i], "battery") == 0) {
+            has_battery = true;
+        } else if (strcmp(newBooking.essentials[i], "cable") == 0) {
+            has_cable = true;
         }
     }
-    // 添加请求到队列
-    if (bookingCount < MAX_BOOKINGS) {
-        bookingQueue[bookingCount++] = newBooking;
-        printf("Added parking request for %s\n", newBooking.member);
+    
+    // 验证必需设施是否都存在
+    if (has_battery && has_cable) {
+        add_queue(newBooking);
+    } else {
+        printf("Error: Reservation requires both battery and cable facilities\n");
     }
 }
+
+// 处理事件预约（higher priority）
+void parse_event(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+    
+    // 设置预约类型和状态
+    strcpy(newBooking.type, "event");  // 高优先级事件
+    newBooking.status = 0;  // 设置为待处理状态
+    
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+            default: // facilities
+                if (param_index -4 < MAX_ESSENTIALS) {
+            
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;        
+    }
+    add_queue(newBooking);
+}
+
+
 
 void handle_command(const char* command) {
     char cmd_copy[256];
@@ -62,13 +186,22 @@ void handle_command(const char* command) {
         char* main_cmd = strtok(cmd_copy, ";");
         
         if (strncmp(main_cmd, "addParking", 10) == 0) {
-            parse_add_parking(main_cmd);
+            parse_parking(main_cmd);
+        }
+        else if (strncmp(main_cmd, "addReservation", 14) == 0) {
+            parse_reservation(main_cmd);
+        }
+        else if (strncmp(main_cmd, "addEvent", 8) == 0) {
+            parse_event(main_cmd);
         }
         //指令格式模板:
         //strncmp是C语言中的字符串比较函数，用于比较两个字符串的前n个字符是否相等。
         else if (strncmp(main_cmd, "xxx", 11) == 0) {
             // 调用对应函数
             printf("随便打印点东西放在这里", main_cmd);
+        }
+        else if(strcmp(main_cmd,"endPraogram")){
+            exit(0);
         }
         else {
             printf("Unknown command: %s\n", main_cmd);
