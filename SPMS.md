@@ -34,7 +34,7 @@
                 char start_time[6];       // 开始时间（hh:mm）
                 float duration;          // 持续时间（小时）
                 int slot;                 // 停车位编号（1-10）
-                char essentials[3][20];  // 设施列表（如battery, cable）
+                char essentials[][];  // 设施列表（如battery, cable）
                 int status;               // 状态（0: Pending, 1: Accepted, -1: Rejected）
             };
             ```
@@ -67,24 +67,61 @@
         
         -   **PRIO算法**：
         
-            -   定义优先级：Event > Reservation > Parking > Essentials。
-            -   动态调整队列，高优先级请求可覆盖已分配的低优先级请求。
-            -   例如：若Event请求与已接受的Parking冲突，则Parking被取消，标记为Rejected。
+            -   定义优先级：Event > Reservation > Parking > Essentials（根据收益高低排序）。
+            -   动态调整队列，高优先级请求可抢占已分配的低优先级请求。
+            -   抢占机制：当高优先级请求与已接受的低优先级请求发生时间冲突时，系统会取消低优先级请求并将其状态从"Accepted"改为"Rejected"。
+            -   例如：若Event请求与已接受的Parking冲突，则Parking被取消，标记为Rejected；若Reservation请求与已接受的Parking冲突，同样会导致Parking被取消。
+            -   这种动态调整确保系统能够最大化收益，优先满足高价值的预约需求。
+            -   实现细节：
+                -   系统维护一个按优先级排序的请求队列。
+                -   处理新请求时，先检查是否与已接受的低优先级请求冲突。
+                -   若冲突，则取消低优先级请求，更新其状态为Rejected。
+                -   被抢占的请求不会自动重新安排，除非使用OPTI算法。
+                -   抢占过程中，系统会释放被抢占请求占用的所有资源（停车位和设施）。
+                -   同等优先级的请求之间仍按FCFS原则处理，不会相互抢占。
         
         -   **资源管理**：
         
-            -   使用二维数组记录时间槽占用状态：
-        
-                ```c
+            -   资源限制：
+                -   5个成员：member_A, member_B, member_C, member_D, member_E
+                -   6种设施，每种3个：
+                    -   3个储物柜（lockers）
+                    -   3个雨伞（umbrellas）
+                    -   3个电池（batteries）
+                    -   3个电缆（cables）
+                    -   3个代客泊车（valet parking）
+                    -   3个充气服务（inflation services）
+            
+            -  资源管理：
+
+            使用二维数组记录时间槽占用状态：
+             ```c
                 int time_slots[7][24]; // 7天，每天24小时  
                 int battery_usage[3];  // 3个电池的占用状态（0:空闲，1:占用）
+            ```
+            ```c    
+                // 资源使用状态跟踪
+                int locker_usage[3];       // 3个储物柜的占用状态
+                int umbrella_usage[3];     // 3个雨伞的占用状态
+                int battery_usage[3];      // 3个电池的占用状态
+                int cable_usage[3];        // 3个电缆的占用状态
+                int valetpark_usage[3];    // 3个代客泊车的占用状态
+                int inflation_usage[3];    // 3个充气服务的占用状态
                 ```
+
         
             -   设施依赖规则：
-        
-                -   预订电池（battery）必须同时占用电缆（cable）。
-                -   预订储物柜（locker）必须同时占用雨伞（umbrella）
-    
+                - addReservation：停车位需要配备[battery]和[cable]
+                - addEvent：停车位需要配备[umbrella]和[valetpark]
+                - 设施成对使用规则：
+                  - battery必须与cable成对使用
+                  - locker必须与umbrella成对使用
+                  - valetpark可以与inflation service成对使用
+         检查输入：
+         booking的日期
+            We test the booking schedule for a period, from 10 to 16 May, 2025
+         booking时间
+            booking slots between 08:00 AM – 08:00 PM. One time slot is an hour of time
 2.  **输出模块（Part III）**
     -   **目标**：按格式输出所有预约结果（接受/拒绝）。
     -   **任务**：
@@ -105,7 +142,7 @@
             |------------|--------|--------|------------|----------------------|
             | 2025-05-10 | 09:00  | 11:00  | Parking    | Battery, Cable       |
             ```
-    
+
 3.  **分析模块（Part IV）**
     
     -   **目标**：生成总结报告，对比算法性能。
