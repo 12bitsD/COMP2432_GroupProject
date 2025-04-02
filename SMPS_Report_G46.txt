@@ -1,0 +1,135 @@
+=== Sample Input and Output for Parking Booking System ===
+
+1. Adding Individual Bookings:
+> addParking -member_A 2025-05-10 10:00 2.0 battery cable;
+Pending
+
+> addEvent -member_B 2025-05-10 14:00 3.0 umbrella valetpark;
+Pending
+
+> addReservation -member_C 2025-05-11 09:00 1.5 battery cable;
+Pending
+
+> addParking -member_D 2025-05-10 11:00 2.0 battery cable;
+Pending
+
+2. Batch Import:
+> addBatch -test.dat;
+Imported 4 commands from test.dat
+
+3. Print FCFS Schedule:
+> printBookings -fcfs;
+
+*** Parking Booking – ACCEPTED / FCFS ***
+
+member_A has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   10:00   12:00   Parking      battery cable 
+
+member_B has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   14:00   17:00   Event        umbrella valetpark 
+
+member_C has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-11   09:00   10:30   Reservation  battery cable 
+
+*** Parking Booking – REJECTED / FCFS ***
+
+member_D has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   11:00   13:00   Parking      battery cable 
+
+4. Print Priority Schedule:
+> printBookings -prio;
+
+*** Parking Booking – ACCEPTED / PRIO ***
+
+member_B has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   14:00   17:00   Event        umbrella valetpark 
+
+member_A has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   10:00   12:00   Parking      battery cable 
+
+member_C has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-11   09:00   10:30   Reservation  battery cable 
+
+*** Parking Booking – REJECTED / PRIO ***
+
+member_D has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   11:00   13:00   Parking      battery cable 
+
+5. Print Optimized Schedule:
+> printBookings -opti;
+
+*** Parking Booking – ACCEPTED / OPTI ***
+
+member_C has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-11   09:00   10:30   Reservation  battery cable 
+
+member_A has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   10:00   12:00   Parking      battery cable 
+
+member_B has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   14:00   17:00   Event        umbrella valetpark 
+
+*** Parking Booking – REJECTED / OPTI ***
+
+member_D has the following bookings:
+Date         Start   End     Type         Essentials
+============================================================
+2025-05-10   11:00   13:00   Parking      battery cable 
+
+6. Print All Schedules and Summary:
+> printBookings -ALL;
+
+[Previous FCFS, PRIO, and OPTI outputs repeated]
+
+*** Parking Booking Manager – Summary Report ***
+For FCFS:
+    Total Bookings: 4
+    Accepted: 3
+    Rejected: 1
+    Utilization:
+        Lockers: 3.6%
+        Batteries: 4.2%
+        Parking Slots: 7.7%
+
+For PRIO:
+    Total Bookings: 4
+    Accepted: 3
+    Rejected: 1
+    Utilization:
+        Lockers: 3.6%
+        Batteries: 4.2%
+        Parking Slots: 7.7%
+
+For OPTI:
+    Total Bookings: 4
+    Accepted: 3
+    Rejected: 1
+    Utilization:
+        Lockers: 3.6%
+        Batteries: 4.2%
+        Parking Slots: 7.7%
+
+7. End Program:
+> endProgram;

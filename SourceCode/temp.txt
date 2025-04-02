@@ -1,0 +1,1010 @@
+#ifndef BOOKING_H
+#define BOOKING_H
+
+#define MAX_ESSENTIALS 6
+
+// 设施管理结构
+typedef struct {
+    int booking_count;  // 当前预约数量
+    struct {
+        char booking_id[20];
+        char date[11];
+        float start_hour;
+        float duration;
+    } bookings[84];
+} Facility;
+// 停车位管理
+typedef struct {
+    int booking_count;
+    struct {
+        char booking_id[20];
+        char date[11];
+        float start_hour;
+        float duration;
+    } bookings[84];
+} ParkingSlot;
+
+// 预约类型优先级枚举
+typedef enum {
+    EVENT,       // 最高优先级
+    RESERVATION, // 次高优先级
+    PARKING,     // 第三优先级
+    ESSENTIALS   // 最低优先级
+} BookingTypePriority;
+
+// 预约结构体
+typedef struct {
+    char member[20];
+    char type[15];
+    char date[11];
+    char start_time[6];
+    float duration;
+    int slot;
+    char essentials[MAX_ESSENTIALS][20];
+    int status; // 0: 待处理, 1: 接受, -1: 拒绝
+    BookingTypePriority priority; // 预约优先级
+} Booking;
+
+
+// Status codes
+#define STATUS_PENDING 0
+#define STATUS_ACCEPTED 1
+#define STATUS_REJECTED -1
+// 全局请求队列
+#define MAX_BOOKINGS 100
+extern Booking bookingQueue[MAX_BOOKINGS];
+extern int bookingCount;
+
+// 全局资源数组
+extern ParkingSlot parkingSlots[10];
+extern Facility lockers[3];
+extern Facility umbrellas[3];
+extern Facility batteries[3];
+extern Facility cables[3];
+extern Facility valetParking[3];
+extern Facility inflationServices[3];
+
+// 函数声明
+void process_requests();
+void release_resources();
+// 算法设置与处理函数
+void set_scheduling_algorithm(SchedulingAlgorithm algorithm);
+void process_requests_fcfs();
+void process_requests_prio();
+void process_requests_opti();
+void reset_scheduling_results();
+
+// 资源管理函数
+void release_essentials(Booking booking);
+
+#endif // BOOKING_H// inputModule.c
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <stdbool.h>
+#include "booking.h"
+#include "output.h"
+
+// 全局预约请求队列（bookingQueue数），最多存储MAX_BOOKINGS个预约
+// bookingQueue数组每个元素保存一个用户的停车预约信息，包含成员ID、时间、车位号等
+// bookingCount记录当前有效的预约数量，添加新预约时会自动递增这个计数器
+// 这两个变量会被不同的命令处理函数共享使用，比如添加/取消预约时都需要操作这个队列
+
+// 定义全局
+Booking bookingQueue[MAX_BOOKINGS];
+int bookingCount = 0;
+
+
+ // 添加请求到队列
+void add_queue(Booking newBooking) {
+
+    if (bookingCount < MAX_BOOKINGS) {
+        bookingQueue[bookingCount++] = newBooking;
+        printf("Pending\n");
+    } else {
+        printf("Error: Booking queue is full\n");
+    }
+}
+
+void parse_parking(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+    newBooking.status = 0;
+    newBooking.priority = PARKING; // 设置优先级为PARKING
+
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+            default: // facilities
+                if (param_index - 4 < MAX_ESSENTIALS) {
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;
+    }
+    // 检查是否包含必需设施：battery和cable
+    bool has_battery = false;
+    bool has_cable = false;
+
+    // 遍历essentials数组检查必需设施
+    for (int i = 0; i < MAX_ESSENTIALS && newBooking.essentials[i][0] != '\0'; i++) {
+        if (strcmp(newBooking.essentials[i], "battery") == 0) {
+            has_battery = true;
+        } else if (strcmp(newBooking.essentials[i], "cable") == 0) {
+            has_cable = true;
+        }
+    }
+
+    // 验证必需设施是否都存在
+    if (has_battery && has_cable) {
+        add_queue(newBooking);
+    } else {
+        printf("Error: Reservation requires both battery and cable facilities\n");
+    }
+}
+
+// 处理普通预约
+void parse_reservation(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+
+    // 设置预约类型和状态
+    newBooking.status = 0;  // 设置为待处理状态
+
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+
+            default: // facilities
+                if (param_index - 4 < MAX_ESSENTIALS) {
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;
+
+    }
+    // 检查是否包含必需设施：battery和cable
+    bool has_battery = false;
+    bool has_cable = false;
+
+    // 遍历essentials数组检查必需设施
+    for (int i = 0; i < MAX_ESSENTIALS && newBooking.essentials[i][0] != '\0'; i++) {
+        if (strcmp(newBooking.essentials[i], "battery") == 0) {
+            has_battery = true;
+        } else if (strcmp(newBooking.essentials[i], "cable") == 0) {
+            has_cable = true;
+        }
+    }
+
+    // 验证必需设施是否都存在
+    if (has_battery && has_cable) {
+        add_queue(newBooking);
+    } else {
+        printf("Error: Reservation requires both battery and cable facilities\n");
+    }
+}
+
+// 处理事件预约（higher priority）
+void parse_event(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+
+    // 设置预约类型和状态
+    newBooking.priority = EVENT;  // 高优先级事件
+    newBooking.status = 0;  // 设置为待处理状态
+
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+            default: // facilities
+                if (param_index -4 < MAX_ESSENTIALS) {
+
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                }else{
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;
+    }
+    // 检查必需设施：umbrella和valetpark
+    bool has_umbrella = false;
+    bool has_valetpark = false;
+
+    for (int i = 0; i < MAX_ESSENTIALS && newBooking.essentials[i][0] != '\0'; i++) {
+        if (strcmp(newBooking.essentials[i], "umbrella") == 0) has_umbrella = true;
+        if (strcmp(newBooking.essentials[i], "valetpark") == 0) has_valetpark = true;
+    }
+
+    if (has_umbrella && has_valetpark) {
+        add_queue(newBooking);
+    } else {
+        printf("Error: Event requires both umbrella and valetpark facilities\n");
+    }
+}
+// 在command_handler.c中添加bookEssentials命令处理
+void parse_essentials(char* main_cmd) {
+    char* token = strtok(main_cmd, " ");
+    Booking newBooking = {0};
+
+    // 设置预约类型和状态
+    newBooking.priority = ESSENTIALS;  // 最低优先级
+    newBooking.status = 0;  // 设置为待处理状态
+
+    int param_index = 0;
+    while ((token = strtok(NULL, " ")) != NULL) {
+        switch(param_index) {
+            case 0: // member ID
+                strncpy(newBooking.member, token + 1, sizeof(newBooking.member)-1);
+                break;
+            case 1: // date
+                strcpy(newBooking.date, token);
+                break;
+            case 2: // start time
+                strcpy(newBooking.start_time, token);
+                break;
+            case 3: // duration
+                newBooking.duration = atof(token);
+                break;
+            default: // facilities
+                if (param_index - 4 < MAX_ESSENTIALS) {
+                    strcpy(newBooking.essentials[param_index - 4], token);
+                } else {
+                    printf("Error: Too many facilities specified\n");
+                    return;
+                }
+                break;
+        }
+        param_index++;
+    }
+
+    add_queue(newBooking);
+}
+
+
+
+void handle_command(const char* command) {
+    char cmd_copy[256];
+    strcpy(cmd_copy, command);
+
+    // 主命令
+    char* main_cmd = strtok(cmd_copy, ";");
+
+    if (strncmp(main_cmd, "addParking", 10) == 0) {
+        parse_parking(main_cmd);
+    }
+    else if (strncmp(main_cmd, "addReservation", 14) == 0) {
+        parse_reservation(main_cmd);
+    }
+    else if (strncmp(main_cmd, "addEvent", 8) == 0) {
+        parse_event(main_cmd);
+    }
+    else if (strncmp(main_cmd, "bookEssentials", 14) == 0) {
+        parse_essentials(main_cmd);
+    }
+    else if (strncmp(main_cmd, "addBatch", 11) == 0) {
+        import_batch(main_cmd);
+    }
+    else if (strncmp(main_cmd, "printBookings -fcfs", 19) == 0) {
+        print_booking_schedule_fcfs();
+    }
+    else if (strncmp(main_cmd, "printBookings -prio", 19) == 0) {
+        print_booking_schedule_prio();
+    }
+    else if (strncmp(main_cmd, "printBookings -opti", 19) == 0) {
+        print_booking_schedule_opti();
+    }
+    else if (strncmp(main_cmd, "printBookings -ALL", 18) == 0) {
+        print_all();
+    }
+    else if(strcmp(main_cmd,"endProgram")==0){
+        exit(0);
+    }
+    else {
+        printf("Unknown command: %s\n", main_cmd);
+    }
+}
+
+void import_batch(char* filename) {
+    // 从文件名参数中提取文件名
+    char* batch_file = strtok(filename, " ");
+    batch_file = strtok(NULL, " ");
+
+    // 从参数中删除前导的'-'
+    if (batch_file != NULL && batch_file[0] == '-') {
+        batch_file++;
+    }
+
+    FILE* file = fopen(batch_file, "r");
+    if (file == NULL) {
+        printf("Error: Cannot open batch file %s\n", batch_file);
+        return;
+    }
+
+    char line[256];
+    int count = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        // 去除换行符
+        line[strcspn(line, "\n")] = '\0';
+
+        if (strlen(line) > 0) {
+            handle_command(line);
+            count++;
+        }
+    }
+
+    fclose(file);
+    printf("Imported %d commands from %s\n", count, batch_file);
+}// inputModule.h
+
+#ifndef INPUTMODULE_H
+#define INPUTMODULE_H
+
+#include "booking.h"
+#include "output.h"
+
+void handle_command(const char* command);
+void add_queue(Booking newBooking);
+void parse_parking(char* main_cmd);
+void parse_reservation(char* main_cmd);
+void parse_event(char* main_cmd);
+void parse_essentials(char* main_cmd);
+void import_batch(char* filename);
+
+
+#endif // INPUTMODULE_H#include <stdio.h>
+#include <string.h>
+#include "booking.h"
+
+
+void handle_command(const char* command);
+
+int main() {
+    char input[256];
+    bookingCount = 0; // 初始化全局计数器
+
+    printf("~~ WELCOME TO PolyU ~~\n");
+    printf("Please enter booking: ");
+    while (fgets(input, sizeof(input), stdin)) {
+        // 去除换行符
+        input[strcspn(input, "\n")] = '\0';
+
+        if (strcmp(input, "exit") == 0) {
+            break;
+        }
+
+        if (strlen(input) > 0) {
+            handle_command(input);
+        }
+
+        printf("Please enter booking: ");
+    }
+    return 0;
+}// output.c
+
+#include <stdio.h>
+#include <string.h>
+#include "booking.h"
+#include "output.h"
+
+// Assume your scheduling functions are encapsulated in scheduling.c.
+// Declare them as external functions.
+extern void process_requests();
+extern Facility lockers[3];
+extern Facility umbrellas[3];
+extern Facility batteries[3];
+extern Facility cables[3];
+extern Facility valetParking[3];
+extern Facility inflationServices[3];
+extern ParkingSlot parkingSlots[10];
+
+// A helper function to compute the end time (HH:MM) given a start time and duration.
+void compute_end_time(const char *start_time, float duration, char *end_time, int size) {
+    int start_hour, start_minute;
+    sscanf(start_time, "%d:%d", &start_hour, &start_minute);
+    int total_minutes = start_hour * 60 + start_minute + (int)(duration * 60);
+    int end_hour = (total_minutes / 60) % 24;
+    int end_minute = total_minutes % 60;
+    snprintf(end_time, size, "%02d:%02d", end_hour, end_minute);
+}
+
+// Helper function: Print bookings for a given algorithm and status, grouped by member.
+void print_bookings_by_algo(int algo, int status_filter, const char *title) {
+    printf("\n*** %s ***\n", title);
+    const char *members[] = {"member_A", "member_B", "member_C", "member_D", "member_E"};
+    int num_members = 5;
+
+    for (int m = 0; m < num_members; m++) {
+        int printed_any = 0;
+        // Check if this member has any bookings with the specified algo and status.
+        for (int i = 0; i < bookingCount; i++) {
+            if (strcmp(bookingQueue[i].member, members[m]) == 0 &&
+                bookingQueue[i].algorithm == algo &&
+                bookingQueue[i].status == status_filter) {
+                printed_any = 1;
+                break;
+            }
+        }
+        if (printed_any) {
+            printf("\n%s has the following bookings:\n", members[m]);
+            printf("Date         Start   End     Type         Essentials\n");
+            printf("============================================================\n");
+            for (int i = 0; i < bookingCount; i++) {
+                if (strcmp(bookingQueue[i].member, members[m]) == 0 &&
+                    bookingQueue[i].algorithm == algo &&
+                    bookingQueue[i].status == status_filter) {
+                    char end_time[6];
+                    compute_end_time(bookingQueue[i].start_time, bookingQueue[i].duration, end_time, 6);
+                    printf("%-12s %-7s %-7s %-12s ", bookingQueue[i].date, bookingQueue[i].start_time, end_time, bookingQueue[i].type);
+                    if (strlen(bookingQueue[i].essentials[0]) == 0) {
+                        printf("*\n");
+                    } else {
+                        for (int j = 0; j < MAX_ESSENTIALS; j++) {
+                            if (strlen(bookingQueue[i].essentials[j]) > 0) {
+                                printf("%s ", bookingQueue[i].essentials[j]);
+                            }
+                        }
+                        printf("\n");
+                    }
+                }
+            }
+        }
+    }
+}
+
+void print_booking_schedule_fcfs() {
+    // Call the FCFS scheduling function to update bookingQueue.
+    process_requests(0);
+    // Print accepted bookings for FCFS.
+    print_bookings_by_algo(ALGO_FCFS, STATUS_ACCEPTED, "Parking Booking – ACCEPTED / FCFS");
+    // Print rejected bookings for FCFS.
+    print_bookings_by_algo(ALGO_FCFS, STATUS_REJECTED, "Parking Booking – REJECTED / FCFS");
+}
+
+void print_booking_schedule_prio() {
+    // Call the Priority scheduling function to update bookingQueue.
+    process_requests(1);
+    // Print accepted bookings for Priority.
+    print_bookings_by_algo(ALGO_PRIO, STATUS_ACCEPTED, "Parking Booking – ACCEPTED / PRIO");
+    // Print rejected bookings for Priority.
+    print_bookings_by_algo(ALGO_PRIO, STATUS_REJECTED, "Parking Booking – REJECTED / PRIO");
+}
+void print_booking_schedule_opti() {
+    // Call the Priority scheduling function to update bookingQueue.
+    process_requests(2);
+    // Print accepted bookings for Priority.
+    print_bookings_by_algo(ALGO_PRIO, STATUS_ACCEPTED, "Parking Booking – ACCEPTED / PRIO");
+    // Print rejected bookings for Priority.
+    print_bookings_by_algo(ALGO_PRIO, STATUS_REJECTED, "Parking Booking – REJECTED / PRIO");
+}
+
+
+void print_all() {
+    print_booking_schedule_fcfs();
+    print_booking_schedule_prio();
+    print_booking_schedule_opti();
+    print_summary_report();
+}
+
+
+float calculate_facility_utilization(Facility *facilities, int num_facilities) {
+    float total_hours = 0;
+    for (int i = 0; i < num_facilities; i++) {
+        for (int j = 0; j < facilities[i].booking_count; j++) {
+            total_hours += facilities[i].bookings[j].duration;
+        }
+    }
+    float total_available = num_facilities * 12 * 7; // 每个设施总可用时间（84小时）
+    return (total_hours / total_available) * 100;
+}
+
+// 计算停车位利用率
+float calculate_parking_utilization() {
+    float total_hours = 0;
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < parkingSlots[i].booking_count; j++) {
+            total_hours += parkingSlots[i].bookings[j].duration;
+        }
+    }
+    float total_available = 10 * 12 * 7; // 10个停车位，总可用时间840小时
+    return (total_hours / total_available) * 100;
+}
+
+void print_summary_report() {
+    // 保存原始预约队列状态
+    int original_booking_count = bookingCount;
+    Booking original_bookings[MAX_BOOKINGS];
+    memcpy(original_bookings, bookingQueue, sizeof(Booking) * original_booking_count);
+
+    // 处理FCFS算法
+    process_requests(0); // 调用FCFS
+    int accepted_fcfs = 0, rejected_fcfs = 0;
+
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == STATUS_ACCEPTED) accepted_fcfs++;
+        else if (bookingQueue[i].status == STATUS_REJECTED) rejected_fcfs++;
+    }
+    // 计算FCFS的资源利用率
+    float locker_util_fcfs = calculate_facility_utilization(lockers, 3);
+    float battery_util_fcfs = calculate_facility_utilization(batteries, 3);
+    float parking_util_fcfs = calculate_parking_utilization();
+
+    // 处理PRIO算法
+    process_requests(1); // 调用PRIO
+    int accepted_prio = 0, rejected_prio = 0;
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == STATUS_ACCEPTED) accepted_prio++;
+        else if (bookingQueue[i].status == STATUS_REJECTED) rejected_prio++;
+    }
+    float locker_util_prio = calculate_facility_utilization(lockers, 3);
+    float battery_util_prio = calculate_facility_utilization(batteries, 3);
+    float parking_util_prio = calculate_parking_utilization();
+
+    // 处理 OPTI 算法（新增）
+    process_requests(2); // 调用 OPTI
+    int accepted_opti = 0, rejected_opti = 0;
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == STATUS_ACCEPTED) accepted_opti++;
+        else if (bookingQueue[i].status == STATUS_REJECTED) rejected_opti++;
+    }
+    float locker_util_opti = calculate_facility_utilization(lockers, 3);
+    float battery_util_opti = calculate_facility_utilization(batteries, 3);
+    float parking_util_opti = calculate_parking_utilization();
+
+    // 恢复原始预约队列状态
+    memcpy(bookingQueue, original_bookings, sizeof(Booking) * original_booking_count);
+    bookingCount = original_booking_count;
+
+    // 输出报告
+    printf("\n*** Parking Booking Manager – Summary Report ***\n");
+    printf("For FCFS:\n");
+    printf("    Total Bookings: %d\n", bookingCount);
+    printf("    Accepted: %d\n", accepted_fcfs);
+    printf("    Rejected: %d\n", rejected_fcfs);
+    printf("    Utilization:\n");
+    printf("        Lockers: %.1f%%\n", locker_util_fcfs);
+    printf("        Batteries: %.1f%%\n", battery_util_fcfs);
+    printf("        Parking Slots: %.1f%%\n", parking_util_fcfs);
+
+    printf("For PRIO:\n");
+    printf("    Total Bookings: %d\n", bookingCount);
+    printf("    Accepted: %d\n", accepted_prio);
+    printf("    Rejected: %d\n", rejected_prio);
+    printf("    Utilization:\n");
+    printf("        Lockers: %.1f%%\n", locker_util_prio);
+    printf("        Batteries: %.1f%%\n", battery_util_prio);
+    printf("        Parking Slots: %.1f%%\n", parking_util_prio);
+
+
+    printf("For OPTI:\n");
+    printf("    Total Bookings: %d\n", bookingCount);
+    printf("    Accepted: %d\n", accepted_opti);
+    printf("    Rejected: %d\n", rejected_opti);
+    printf("    Utilization:\n");
+    printf("        Lockers: %.1f%%\n", locker_util_opti);
+    printf("        Batteries: %.1f%%\n", battery_util_opti);
+    printf("        Parking Slots: %.1f%%\n", parking_util_opti);
+}#ifndef OUTPUT_H
+#define OUTPUT_H
+
+void print_booking_schedule_fcfs();
+void print_booking_schedule_prio();
+void print_booking_schedule_opti();
+void print_summary_report();
+void print_all();
+// 新增声明
+extern float calculate_facility_utilization(Facility *facilities, int num_facilities);
+extern float calculate_parking_utilization();
+#endif // OUTPUT_H// scheduling.c
+
+#include "booking.h"
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+
+
+// 时间槽管理（7天，每天24小时）
+static bool time_slots[7][24] = {0};
+
+// 全局资源数组定义
+ParkingSlot parkingSlots[10] = {0};
+Facility lockers[3] = {0};
+Facility umbrellas[3] = {0};
+Facility batteries[3] = {0};
+Facility cables[3] = {0};
+Facility valetParking[3] = {0};
+Facility inflationServices[3] = {0};
+static int days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+// 调度算法类型
+typedef enum {
+    ALGO_FCFS = 0,
+    ALGO_PRIO = 1,
+    ALGO_OPTI = 2
+} SchedulingAlgorithm;
+
+static bool is_valid_date(int year, int month, int day) {
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > days_in_month[month]) return false;
+    if (year != 2025 || month != 5 || day < 10 || day > 16) return false;
+    return true;
+}
+
+// 日期解析函数
+static int parse_date_to_day(const char* date) {
+    int year, month, day;
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3) {
+        return -1;
+    }
+
+    if (!is_valid_date(year, month, day)) {
+        return -1;
+    }
+
+    //  Zeller公式
+    if (month == 1 || month == 2) {
+        month += 12;
+        year--;
+    }
+    int h = (day + 13*(month+1)/5 + year + year/4 - year/100 + year/400) % 7;
+    return (h + 5) % 7; // 转换为sunday=0, Monday=1,..Sat=6
+}
+
+// 检查时间冲突
+static bool check_time_conflict(const char* date, int start_hour, float duration) {
+    int day = parse_date_to_day(date);
+    if (day == -1) return true; // 无效日期
+
+    // 检查时间是否在允许范围内（8:00-20:00）
+    if (start_hour < 8 || start_hour >= 20) return true;
+
+    int end_hour = start_hour + (int)duration;
+    if (end_hour > 20) return true; // 结束时间超过20:00
+
+    // 检查时间槽是否已被占用
+    for (int h = start_hour; h < end_hour; h++) {
+        if (h >= 0 && h < 24 && time_slots[day][h]) return true;
+    }
+
+    return false;
+}
+
+// 检查设施在指定日期和时间是否可用
+static bool is_facility_available(Facility* facility, const char* date, float start_hour, float duration) {
+    // 如果预约计数为0，设施肯定可用
+    if (facility->booking_count == 0) {
+        return true;
+    }
+
+    // 计算请求预约的结束时间
+    float end_hour_request = start_hour + duration;
+
+    // 检查所有现有预约是否与请求时间冲突
+    for (int i = 0; i < facility->booking_count; i++) {
+        // 只检查同一天的预约
+        if (strcmp(facility->bookings[i].date, date) == 0) {
+            float start_hour_existing = facility->bookings[i].start_hour;
+            float end_hour_existing = start_hour_existing + facility->bookings[i].duration;
+
+            // 检查时间重叠：
+            // 如果新预约的开始时间在现有预约结束前，且新预约的结束时间在现有预约开始后
+            if ((start_hour < end_hour_existing) && (end_hour_request > start_hour_existing)) {
+                return false; // 有冲突，设施不可用
+            }
+        }
+    }
+
+    return true; // 没有冲突，设施可用
+}
+
+// 记录设施预约信息
+static void record_facility_booking(Facility* facility, const char* member_id,
+                                   const char* date, float start_hour, float duration) {
+    // 确保不超过最大预约数量
+    if (facility->booking_count >= 84) {
+        printf("Warning: Facility booking capacity reached!\n");
+        return;
+    }
+
+    // 获取当前预约索引
+    int idx = facility->booking_count;
+
+    // 记录预约信息
+    strcpy(facility->bookings[idx].booking_id, member_id);
+    strcpy(facility->bookings[idx].date, date);
+    facility->bookings[idx].start_hour = start_hour;
+    facility->bookings[idx].duration = duration;
+
+    // 增加预约计数
+    facility->booking_count++;
+}
+
+static bool allocate_essentials(const char essentials[][20], BookingTypePriority priority,
+                               const char* member_id, const char* date, const char* start_time, float duration) {
+    int resource_index = -1;
+    float start_hour = atof(start_time);
+
+    // 查找可用资源对
+    for (int j = 0; j < 3; j++) {
+        bool is_available = false;
+
+        switch(priority) {
+            case EVENT:
+                is_available = is_facility_available(&lockers[j], date, start_hour, duration) &&
+                              is_facility_available(&umbrellas[j], date, start_hour, duration);
+                break;
+
+            case RESERVATION:
+            case PARKING:
+                is_available = is_facility_available(&batteries[j], date, start_hour, duration) &&
+                              is_facility_available(&cables[j], date, start_hour, duration);
+                break;
+
+            case ESSENTIALS:
+                is_available = is_facility_available(&valetParking[j], date, start_hour, duration) &&
+                              is_facility_available(&inflationServices[j], date, start_hour, duration);
+                break;
+        }
+
+        if (is_available) {
+            resource_index = j;
+            break;
+        }
+    }
+
+    if (resource_index == -1) return false; // 没找到可用的设施对
+
+    // 寻找可用的停车位
+    int slot_index = -1;
+    for (int i = 0; i < 10; i++) {
+        if (parkingSlots[i].booking_count < 10) {
+            slot_index = i;
+            break;
+        }
+    }
+
+    if (slot_index == -1) return false; // 没有可用停车位
+
+    // 记录停车位预约
+    record_facility_booking(&parkingSlots[slot_index], member_id, date, start_hour, duration);
+
+    // 记录相应设施对的预约
+    switch(priority) {
+        case EVENT:
+            record_facility_booking(&lockers[resource_index], member_id, date, start_hour, duration);
+            record_facility_booking(&umbrellas[resource_index], member_id, date, start_hour, duration);
+            break;
+
+        case RESERVATION:
+        case PARKING:
+            record_facility_booking(&batteries[resource_index], member_id, date, start_hour, duration);
+            record_facility_booking(&cables[resource_index], member_id, date, start_hour, duration);
+            break;
+
+        case ESSENTIALS:
+            record_facility_booking(&valetParking[resource_index], member_id, date, start_hour, duration);
+            record_facility_booking(&inflationServices[resource_index], member_id, date, start_hour, duration);
+            break;
+    }
+
+    return true;
+}
+
+// 确定预约类型的优先级
+static BookingTypePriority get_booking_priority(const char* type) {
+    if (strcmp(type, "event") == 0) return EVENT;
+    if (strcmp(type, "reservation") == 0) return RESERVATION;
+    if (strcmp(type, "parking") == 0) return PARKING;
+    return ESSENTIALS; // 默认最低优先级
+}
+
+// 优先级比较函数-qsort需要
+static int priority_comparator(const void* a, const void* b) {
+    const Booking* bookingA = (const Booking*)a;
+    const Booking* bookingB = (const Booking*)b;
+    // 优先级降序排列
+    if (bookingA->priority != bookingB->priority) {
+        return bookingA->priority - bookingB->priority;
+    }
+    // 同优先级按添加顺序（数组索引）升序排列
+    return (bookingA - bookingQueue) - (bookingB - bookingQueue);
+}
+
+
+// FCFS算法实现
+void process_requests_fcfs() {
+    // 按预约添加顺序处理
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == 0) { // 只处理未处理的预约
+            int day = parse_date_to_day(bookingQueue[i].date);
+
+            float start_hour = atoi(bookingQueue[i].start_time);
+            float duration = bookingQueue[i].duration;
+            // 检查时间冲突和资源可用性
+            if (!check_time_conflict(bookingQueue[i].date, start_hour, duration) &&
+                allocate_essentials(bookingQueue[i].essentials, bookingQueue[i].priority,
+                                    bookingQueue[i].member, bookingQueue[i].date,
+                                    bookingQueue[i].start_time, duration)) {
+
+                // 标记时间槽为已占用
+                float end_hour = start_hour + (float)duration;
+                for (int h = start_hour; h < end_hour; h++) {
+                    time_slots[day][h] = true;
+                }
+
+                bookingQueue[i].status = 1; // 接受
+            } else {
+                bookingQueue[i].status = -1; // 拒绝
+            }
+        }
+    }
+}
+
+
+// PRIO算法实现
+void process_requests_prio() {
+    // 设置所有预约的优先级
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == 0) {
+            bookingQueue[i].priority = get_booking_priority(bookingQueue[i].type);
+        }
+    }
+
+    // 稳定排序：优先级降序，同优先级保持添加顺序
+    qsort(bookingQueue, bookingCount, sizeof(Booking), priority_comparator);
+
+    // 复用FCFS处理逻辑
+    process_requests_fcfs();
+}
+// 持续时间比较函数
+static int duration_comparator(const void* a, const void* b) {
+    const Booking* bookingA = (const Booking*)a;
+    const Booking* bookingB = (const Booking*)b;
+
+    // 持续时间升序排列（短的先处理）
+    if (bookingA->duration != bookingB->duration) {
+        return bookingA->duration > bookingB->duration ? 1 : -1;
+    }
+
+    // 同持续时间按优先级排列
+    if (bookingA->priority != bookingB->priority) {
+        return bookingB->priority - bookingA->priority;
+    }
+
+    // 同持续时间同优先级按添加顺序排列
+    return (bookingA - bookingQueue) - (bookingB - bookingQueue);
+}
+
+// OPTI 最短时间优先
+//短时间预约更容易适应空闲时段
+//安排更多短时间预约可以提高整体利用率
+//同时考虑预约优先级，确保高优先级预约优先处理
+//对于同优先级同持续时间的预约，保持原始顺序
+void process_requests_opti() {
+    // 设置预约优先级
+    for (int i = 0; i < bookingCount; i++) {
+        if (bookingQueue[i].status == 0) {
+            bookingQueue[i].priority = get_booking_priority(bookingQueue[i].type);
+        }
+    }
+
+    // 按持续时间升序排序（短时间预约更容易找到空闲时段）
+    qsort(bookingQueue, bookingCount, sizeof(Booking), duration_comparator);
+
+    // 复用FCFS处理逻辑
+    process_requests_fcfs();
+}
+
+void reset_scheduling_results() {
+    // 重置时间槽
+    memset(time_slots, 0, sizeof(time_slots));
+
+    // 重置停车位数据
+    for (int i = 0; i < 10; i++) {
+        parkingSlots[i].booking_count = 0;
+    }
+
+    // 重置所有设施资源
+    for (int i = 0; i < 3; i++) {
+        lockers[i].booking_count = 0;
+        umbrellas[i].booking_count = 0;
+        batteries[i].booking_count = 0;
+        cables[i].booking_count = 0;
+        valetParking[i].booking_count = 0;
+        inflationServices[i].booking_count = 0;
+    }
+
+    // 重置预约队列中的状态标志
+    for (int i = 0; i < bookingCount; i++) {
+        bookingQueue[i].status = 0; // 重置为"未处理"状态
+    }
+}
+
+// process_requests函数支持不同算法
+void process_requests(int algo) {
+    // 清空之前的调度结果
+    reset_scheduling_results();
+    // 根据当前选择的算法调用相应的处理函数
+    switch (algo) {
+        case 0:
+            process_requests_fcfs();
+            break;
+        case 1:
+            process_requests_prio();
+            break;
+        case 2:
+            process_requests_opti();
+            break;
+        default:
+            printf("Unknown algorithm selected\n");
+            break;
+    }
+}#ifndef SCHEDULING_H
+#define SCHEDULING_H
+
+#include "booking.h"
+
+// 声明调度算法类型
+typedef enum {
+    ALGO_FCFS = 0,
+    ALGO_PRIO = 1,
+    ALGO_OPTI = 2
+} SchedulingAlgorithm;
+
+// 声明调度相关函数
+void process_requests(int algo);
+void process_requests_fcfs();
+void process_requests_prio();
+void process_requests_opti();
+void reset_scheduling_results();
+
+#endif // SCHEDULING_H.  Here's every code file we have here, according to the pdf project's requirements, feel free to adjust every code needed to ensure its correctness, and send the whole code back to me one by one each code file. Thanks a lot for your assistance!
